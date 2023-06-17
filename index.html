@@ -90,7 +90,7 @@ palpop<-colorQuantile(palette = "RdBu", domain=CountiesMM$Totalpop, n=10)
 ### The Leaflet map
 ## Named map
 ## this will take awhile
-map3<-CountiesMM %>% # Data set you want to map and the '%>%' is a piping command which makes it keep moving forward 
+map4<-CountiesMM %>% # Data set you want to map and the '%>%' is a piping command which makes it keep moving forward 
   st_transform(crs = "+init=epsg:4326") %>% # Setting the projection of our simple feature spatial dataframe to match the webmapping application
   leaflet() %>%  # Leaflet function which puts this all in motion
   setView(lng = -98.55, lat = 39.8098, zoom = 3)%>% # the lng and lat set the center point, while zoom chooses how zoomed in it is
@@ -139,11 +139,11 @@ map3<-CountiesMM %>% # Data set you want to map and the '%>%' is a piping comman
     options = layersControlOptions(collapsed = FALSE)) 
 
 
-map3
+map4
 
 
 
-saveWidget(map, file="map3.html", selfcontained = T)
+saveWidget(map4, file="map4.html", selfcontained = T)
 
 
 st_write(CountiesMM, "countiesmm.shp")
