@@ -1,1 +1,150 @@
+setwd("D:/Classes/OnGeo/gtim/gtim323/BrennanCara/Exercise_4/EXERCISE4")
+getwd()
+
+### Libraries
+### Libraries are essentially the software packages that provide the functions 
+### That you will use to manipulate and change the data
+# Tidyverse is a library that is used to manipulate data in an easy to use cross sectional approach
+library(tidyverse)
+#Tidy Census is the library that connects to the Census API and allows you to pull the data
+library(tidycensus)
+# GGPLOT2 is one of the most popular data visualization packages.  You can make maps and anytype of plot you might want
+library(ggplot2)
+# Hmisc is another library that helps with the data manipulation
+library(Hmisc)
+# SF is the simple features library that allows you work with the spatial datatype of simple features
+library(sf)
+# Leaflet Gives the base map
+library(leaflet)
+# Stringr
+library(stringr)
+# Allows us to export our leaflet map
+library(htmlwidgets)
+
+### Part 1 Finding your Census Variables
+# First you will need to install your census api
+# The census API should have been gotten from https://api.census.gov/data/key_signup.html
+# using the census_api_key function here put in your api key.  
+# If you want to not have to do this every time you want to download census data, then add the second argument of install=TRUE.  If you choose this, then you might need to restart R. 
+census_api_key("a4075d14f0f4418fdc430de9238fe8bf52d29cdc")
+#alternative would be census_api_key("YOUR API KEY GOES HERE", install=TRUE)
+
+
+# Loading the Possible Census Variables -----------------------------------
+# Now we need to load the variables to determine which ones would be the best for us.
+# using the load_variables() function to load an dataframe that tells you the codes for the variables we want to extract.
+# First we will load the American Community Survey (ACS) 5 year estimates 2016-2020(last available ACS with tidycensus).
+# First argument is the year,second is the dataset (acs is the complete ACS dataset), and third is just left as cache=false
+ACS<-load_variables(2020,
+                    "acs5",
+                    cache=FALSE)
+
+
+# Check out what it brought back.  Looks like 27,040 observations of 3 variables
+head(ACS)
+# now lets open the dataframe and catch all the codes for the topic you are most interested in.
+view(ACS)
+
+  ### My Map
+
+Variables<-c(PBP = "B17007_002", # Total (male and female) below poverty level
+             MHV = "B25109_001", # Median Home Value
+             Totalpop = "B01003_001") # Total Population
+
+
+CountyMM<-get_acs(geography = "county",  #Defining the spatial scale
+                variables = Variables, #grabbing the variables we defined previously
+                survey = "acs5",      # survey we are pulling is the ACS 5 year estimates
+                year = 2020,   # End year for the 5 year estimates- 2016-2020
+                output = "wide", # data format wide (cross sectional)
+                geometry=T) # Pulls the spatial data information with it.
+
+head(CountyMM)
+
+# summary() provides an overview of the data
+summary(CountyMM)
+
+# Notice how there is two numbers and columns for each of the variables? ex. MHIE and MHIM
+# MHIE or the ones with an E on the end are the estimate, while the MHIM or ones with M are margin of error
+# For the purposes of this lab we only care about the estimates
+# Lets clean up this data a little bit before we go too far
+# Here we are just pulling out the columns we care about using the indexing dataframe[,c("column name","etc")]
+CountiesMM<-CountyMM[,c("GEOID", "NAME", "PBPE", "MHVE", "TotalpopE", "geometry")]
+# Easy renaming of the variables
+names(CountiesMM)[names(CountiesMM) =="PBPE"]<-"PBP"
+names(CountiesMM)[names(CountiesMM) =="MHVE"]<-"MHV"
+names(CountiesMM)[names(CountiesMM) =="TotalpopE"]<-"Totalpop"
+
+
+### Setting up the color palletes
+### To get the color schemes you will need to set these up
+# The instructions have the different color palettes you can choose
+# domain is the data that you want to create breaks for.  Here the domain for each of these is the variable
+# n says the number of colors and breaks that you will need.  By making that 10 here we are making a color palette for deciles or 10%.
+# Lowest values would be in the bottom 10% and highest in the top 10%
+palPBP<-colorQuantile(palette = "viridis", domain=CountiesMM$PBP, n=10)
+palMHV<-colorQuantile(palette = "RdYlBu", domain=CountiesMM$MHV, n=10)
+palpop<-colorQuantile(palette = "RdBu", domain=CountiesMM$Totalpop, n=10)
+
+
+### The Leaflet map
+## Named map
+## this will take awhile
+map3<-CountiesMM %>% # Data set you want to map and the '%>%' is a piping command which makes it keep moving forward 
+  st_transform(crs = "+init=epsg:4326") %>% # Setting the projection of our simple feature spatial dataframe to match the webmapping application
+  leaflet() %>%  # Leaflet function which puts this all in motion
+  setView(lng = -98.55, lat = 39.8098, zoom = 3)%>% # the lng and lat set the center point, while zoom chooses how zoomed in it is
+  addTiles(group = "OSM (default)") %>%  #This sets the base map and the following addProviderTiles() are optional otehr basemaps
+  addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
+  addProviderTiles(providers$CartoDB.Positron, group = "Carto B") %>%
+  addPolygons(group = "Total", #Add polygons is how we choose what we want to map.
+              popup = paste("County: ", CountiesMM$NAME, "<br>", #Pop up provides the pop up information if we were to click on the county, paste() pastes all the text together
+                            "Total Population: ", CountiesMM$Totalpop, "<br>", # <br> is html code for new line.   
+                            "Population Below the Poverty Line: ", "$", CountiesMM$PBP, "<br>",
+                            "Median Home Value: ", "$", CountiesMM$MHV, "<br>"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.7,
+              color = ~ palpop(Totalpop)) %>% #Color palette or what the color scheme is.  You made these earlier and they need to match
+  addLegend(position = "bottomleft", pal=palpop, values= CountiesMM$Totalpop, #Legend for this polygon layer
+            title="Percentile of County Total Population", group = "Total", opacity = 1) %>% 
+  addPolygons(group = "PBP", #Next layer with the same set up as before.  We could add as many as the computer would let us. 
+              popup = paste("County: ", CountiesMM$NAME, "<br>",
+                            "Total Population: ", CountiesMM$Totalpop, "<br>",
+                            "Population Below the Poverty Line: ", "$", CountiesMM$PBP, "<br>",
+                            "Median Home Value: ", "$", CountiesMM$MHV, "<br>"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.7,
+              color = ~ palPBP(PBP)) %>%
+  addLegend(position = "bottomright", pal=palPBP, values= CountiesMM$PBP, 
+            title="Percentile of County Population Below the Poverty Line", group = "MHI", opacity = 1) %>% 
+  addPolygons(group = "MHV",
+              popup = paste("County: ", CountiesMM$NAME, "<br>",
+                            "Total Population: ", CountiesMM$Totalpop, "<br>",
+                            "Population Below the Poverty Line: ", "$", CountiesMM$PBP, "<br>",
+                            "Median Home Value: ", "$", CountiesMM$MHV, "<br>"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.7,
+              color = ~ palMHV(MHV)) %>%
+  addLegend(position = "bottomleft", pal=palMHV, values= CountiesMM$MHV, 
+            title="Percentile of County Median Household Income", group = "MHV", opacity = 1) %>% 
+  # Here we hide two of the groups so that only one shows on loading
+  hideGroup("PBP") %>% # Hides the MHI layer so it doesn't all pop up at load
+  hideGroup("MHV") %>% # Hides the MHV layer so it all doesn't pop up at the load
+  addLayersControl(  #Gives you the option to turn on and off different basemaps or layers.
+    baseGroups = c("OSM (default)", "Toner Lite", "Carto B"),
+    overlayGroups = c("Total", "PBP", "MHV"),
+    options = layersControlOptions(collapsed = FALSE)) 
+
+
+map3
+
+
+
+saveWidget(map, file="map3.html", selfcontained = T)
+
+
+st_write(CountiesMM, "countiesmm.shp")
 
